@@ -30,26 +30,28 @@ includes = mapMaybe (mby . parseOnly include)
     mby (Right a) = Just a
     mby _         = Nothing
 
-type Includes = (RawFilePath, [RawFilePath])
+type File     = RawFilePath
+type Includes = (File, [File])
 
 graph :: [Includes] -> Builder
 graph xs = "digraph includes {" <> nodes (groups xs) <> edges xs <> "}"
   where
-    groups = foldl' f M.empty
+    groups = foldl' f M.empty . concatMap (\(x, xs) -> x : xs)
       where
-        f m x = let (d, n) = splitFileName (fst x) in M.insertWith (++) d [n] m
+        f m x = M.insertWith (++) (takeDirectory x) [x] m
 
     nodes = mconcat . map subgraph . M.toList
     edges = mconcat . map (\(x, ys) -> mconcat $ map (edge x) ys)
 
-    subgraph (dir, xs) = "subgraph " <> id dir <> " {" <>
-      "label = " <> byteString dir <> ";" <>
-      mconcat (map node xs) <>
+    subgraph (g, ys) = "subgraph cluster" <> id g <> " {" <>
+      mconcat (map node ys) <>
+      "label=\"" <> byteString g <> "\";" <>
+      "color=blue;" <>
       "};"
 
     edge x y = id x <> " -> " <> id y <> ";"
 
-    node name = id name <> " [label=\"" <> byteString name <> "\"];"
+    node y = id y <> " [label=\"" <> byteString (takeFileName y) <> "\"];"
 
     id = byteString . B.map f
       where
