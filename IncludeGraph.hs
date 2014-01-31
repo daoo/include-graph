@@ -1,23 +1,62 @@
-module Main where
+{-# LANGUAGE OverloadedStrings #-}
+module Main (main) where
 
 import Control.Applicative
+import Data.Attoparsec.ByteString.Char8
+import Data.Attoparsec.Combinator
+import Data.ByteString.Builder hiding (word8)
+import Data.Char
 import Data.List
+import Data.Maybe
+import Data.Monoid
+import System.IO
+import System.Posix.FilePath
+import qualified Data.ByteString.Char8 as B
+import qualified Data.Map as M
 
-type Include = String
+data Location = Local | System
 
-includes :: [String] -> [Include]
-includes = map (takeWhile nsep . drop 1 . dropWhile nsep) . filter (isPrefixOf "#include")
+include :: Parser RawFilePath
+include = string "#include" *> skipSpace *> (system <|> local)
   where
-    nsep c = c /= '"' && c /= '<' && c /= '>'
+    system = between '<' '>'
+    local  = between '"' '"'
 
-graph :: [(String, [Include])] -> String
-graph xs = unlines $ "digraph includes {" : (nodes ++ edges ++ ["}"])
+    between a b = char a *> takeWhile1 (/= b)
+
+includes :: [B.ByteString] -> [RawFilePath]
+includes = mapMaybe (mby . parseOnly include)
   where
-    nodes = map ((++ ";") . fst) xs
-    edges = concatMap (\(f, ys) -> map (\y -> f ++ " -> " ++ y ++ ";") ys) xs
+    mby (Right a) = Just a
+    mby _         = Nothing
 
-fromFile :: FilePath -> IO (String, [Include])
-fromFile f = ((,) f . includes . lines) <$> readFile f
+type Includes = (RawFilePath, [RawFilePath])
+
+graph :: [Includes] -> Builder
+graph xs = "digraph includes {" <> nodes (groups xs) <> edges xs <> "}"
+  where
+    groups = foldl' f M.empty
+      where
+        f m x = let (d, n) = splitFileName (fst x) in M.insertWith (++) d [n] m
+
+    nodes = mconcat . map subgraph . M.toList
+    edges = mconcat . map (\(x, ys) -> mconcat $ map (edge x) ys)
+
+    subgraph (dir, xs) = "subgraph " <> id dir <> " {" <>
+      "label = " <> byteString dir <> ";" <>
+      mconcat (map node xs) <>
+      "};"
+
+    edge x y = id x <> " -> " <> id y <> ";"
+
+    node name = id name <> " [label=\"" <> byteString name <> "\"];"
+
+    id = byteString . B.map f
+      where
+        f x = if x == '/' || x == '.' then '_' else x
+
+fromFile :: RawFilePath -> IO Includes
+fromFile f = ((,) f . includes . B.lines) <$> B.readFile (B.unpack f)
 
 main :: IO ()
-main = lines <$> getContents >>= mapM fromFile >>= putStrLn . graph
+main = B.lines <$> B.getContents >>= mapM fromFile >>= hPutBuilder stdout . graph
