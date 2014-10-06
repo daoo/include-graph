@@ -36,24 +36,24 @@ type Includes = (File, [File])
 graph :: [Includes] -> Builder
 graph xs = "digraph includes {" <> nodes (groups xs) <> edges xs <> "}"
   where
-    groups = foldl' f M.empty . concatMap (\(x, xs) -> x : xs)
+    groups = foldl' f M.empty . concatMap (uncurry (:))
       where
         f m x = M.insertWith (++) (takeDirectory x) [x] m
 
     nodes = mconcat . map subgraph . M.toList
     edges = mconcat . map (\(x, ys) -> mconcat $ map (edge x) ys)
 
-    subgraph (g, ys) = "subgraph cluster" <> id g <> " {" <>
+    subgraph (g, ys) = "subgraph cluster" <> buildid g <> " {" <>
       mconcat (map node ys) <>
       "label=\"" <> byteString g <> "\";" <>
       "color=blue;" <>
       "};"
 
-    edge x y = id x <> " -> " <> id y <> ";"
+    edge x y = buildid x <> " -> " <> buildid y <> ";"
 
-    node y = id y <> " [label=\"" <> byteString (takeFileName y) <> "\"];"
+    node y = buildid y <> " [label=\"" <> byteString (takeFileName y) <> "\"];"
 
-    id = byteString . B.map f
+    buildid = byteString . B.map f
       where
         f x = if x == '/' || x == '.' then '_' else x
 
