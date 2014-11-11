@@ -15,5 +15,5 @@ cabal-version:       >=1.10
 executable include-graph
   main-is:             IncludeGraph.hs
   other-extensions:    OverloadedStrings
-  build-depends:       base >=4.6 && <4.7, attoparsec, bytestring >= 0.10.4.0, containers, posix-paths
+  build-depends:       base, attoparsec, bytestring, containers, posix-paths
   default-language:    Haskell2010

@@ -3,9 +3,7 @@ module Main (main) where
 
 import Control.Applicative
 import Data.Attoparsec.ByteString.Char8
-import Data.Attoparsec.Combinator
 import Data.ByteString.Builder hiding (word8)
-import Data.Char
 import Data.List
 import Data.Maybe
 import Data.Monoid
@@ -13,8 +11,6 @@ import System.IO
 import System.Posix.FilePath
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Map as M
-
-data Location = Local | System
 
 include :: Parser RawFilePath
 include = string "#include" *> skipSpace *> (system <|> local)
