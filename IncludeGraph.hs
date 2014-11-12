@@ -51,7 +51,10 @@ graph xs = "digraph includes {" <> nodes (groups xs) <> edges xs <> "}"
 
     buildid = byteString . B.map f
       where
-        f x = if x == '/' || x == '.' then '_' else x
+        f '/' = '_'
+        f '.' = '_'
+        f '-' = '_'
+        f x   = x
 
 fromFile :: RawFilePath -> IO Includes
 fromFile f = ((,) f . includes . B.lines) <$> B.readFile (B.unpack f)
