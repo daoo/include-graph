@@ -6,75 +6,93 @@ import Control.Monad
 import Data.Attoparsec.ByteString.Char8
 import Data.Bifunctor
 import Data.ByteString.Builder hiding (word8)
+import Data.ByteString.Char8 (ByteString)
+import Data.Char (toLower)
 import Data.Either
 import Data.List
+import Data.Map (Map)
 import Data.Monoid
 import System.IO
 import System.Posix.FilePath
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Map as M
 
--- TODO: Fully qualify all paths
+newtype Module = Module { mkModule :: [ByteString] }
+  deriving (Eq, Ord, Show)
 
-includeCPP :: Parser RawFilePath
+fromFilePath :: RawFilePath -> Module
+fromFilePath = Module . filter (/="/") . splitDirectories . dropExtension
+
+parentModule :: Module -> Module
+parentModule (Module a) = Module (init a)
+
+modName :: Char -> Bool
+modName c = isAlpha_ascii c || isDigit c || c == '_' || c == '-'
+
+includeCPP :: Parser Module
 includeCPP = string "#include" *> skipSpace *> (system <|> local)
   where
-    system = between '<' '>'
-    local  = between '"' '"'
+    system = char '<' *> modref <* char '>'
+    local  = char '"' *> modref <* char '"'
 
-    between a b = char a *> takeWhile1 (/= b)
+    modref = Module <$> sepBy1' (takeWhile1 modName) (char '/')
 
-includeHaskell :: Parser RawFilePath
-includeHaskell = string "import" *> skipSpace *> mby (string "qualified") *> (topath <$> modref)
+includeHaskell :: Parser Module
+includeHaskell = string "import" *> skipSpace *> mby (string "qualified") *> modref
   where
     mby = option () . void
 
-    modref = takeWhile1 modchar
-
-    modchar c = isAlpha_ascii c || isDigit c || c == '.'
-
-    topath = (`B.append` ".hs") . B.map f
-      where
-        f '.' = '/'
-        f x   = x
+    modref = Module <$> sepBy1' (takeWhile1 modName) (char '.')
 
 -- TODO: Check file type
 includes :: (RawFilePath, [RawFilePath]) -> Includes
-includes = id `bimap` (rights . map (parseOnly incl))
+includes = fromFilePath `bimap` (rights . map (parseOnly incl))
   where
     incl = includeCPP <|> includeHaskell
 
 fromFile :: RawFilePath -> IO Includes
 fromFile path = includes . ((,) path . B.lines) <$> B.readFile (B.unpack path)
 
-type Includes = (RawFilePath, [RawFilePath])
+type Includes = (Module, [Module])
 
 graph :: [Includes] -> Builder
-graph xs = "digraph includes {" <> nodes (groups xs) <> edges xs <> "}"
+graph xs = digraph "includes" (nodes (groups xs) <> edges xs)
   where
-    groups = foldl' f M.empty . concatMap (uncurry (:))
-      where
-        f m x = M.insertWith (++) (takeDirectory x) [x] m
+    digraph name content  = "digraph " <> name <> " {" <> content <> "}"
+    subgraph name content = "subgraph cluster" <> name <> " {" <> content <> "};"
 
-    nodes = mconcat . map subgraph . M.toList
+    groups :: [Includes] -> Map Module [Module]
+    groups = foldl' f M.empty
+      where
+        f m (a, bs) = foldl' add (add m a) bs
+
+        add m a = M.insertWith (++) (parentModule a) [a] m
+
+    nodes :: Map Module [Module] -> Builder
+    nodes = mconcat . map subgraph' . M.toList
+
+    edges :: [Includes] -> Builder
     edges = mconcat . map (\(x, ys) -> mconcat $ map (edge x) ys)
 
-    subgraph (g, ys) = "subgraph cluster" <> buildid g <> " {" <>
-      mconcat (map node ys) <>
-      "label=\"" <> byteString g <> "\";" <>
-      "color=blue;" <>
-      "};"
+    subgraph' :: (Module, [Module]) -> Builder
+    subgraph' (parent, children) = subgraph (buildid parent) $
+      mconcat (map node children) <>
+      "label=\"" <> modname parent <> "\";" <> "color=blue;"
 
-    edge x y = buildid x <> " -> " <> buildid y <> ";"
+    edge :: Module -> Module -> Builder
+    edge a b = buildid a <> " -> " <> buildid b <> ";"
 
-    node y = buildid y <> " [label=\"" <> byteString (takeFileName y) <> "\"];"
+    node :: Module -> Builder
+    node a = buildid a <> " [label=\"" <> modname a <> "\"];"
 
-    buildid = byteString . B.map f
+    modname :: Module -> Builder
+    modname = mconcat . map byteString . intersperse (B.singleton '.') . mkModule
+
+    buildid :: Module -> Builder
+    buildid = mconcat . map (byteString . B.map f) . mkModule
       where
-        f '/' = '_'
-        f '.' = '_'
         f '-' = '_'
-        f x   = x
+        f x   = toLower x
 
 main :: IO ()
 main = prog
