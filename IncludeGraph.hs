@@ -51,7 +51,7 @@ includes = fromFilePath `bimap` (rights . map (parseOnly incl))
     incl = includeCPP <|> includeHaskell
 
 fromFile :: RawFilePath -> IO Includes
-fromFile path = includes . ((,) path . B.lines) <$> B.readFile (B.unpack path)
+fromFile path = includes . (,) path . B.lines <$> B.readFile (B.unpack path)
 
 type Includes = (Module, [Module])
 
