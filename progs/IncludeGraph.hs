@@ -2,11 +2,9 @@
 module Main (main) where
 
 import Control.Applicative
-import Control.Monad
 import Data.Attoparsec.ByteString.Char8
 import Data.Bifunctor
 import Data.ByteString.Builder hiding (word8)
-import Data.ByteString.Char8 (ByteString)
 import Data.Char (toLower)
 import Data.Either
 import Data.List
@@ -14,35 +12,10 @@ import Data.Map (Map)
 import Data.Monoid
 import System.IO
 import System.Posix.FilePath
+import Wicker.Module
+import Wicker.Parser
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Map as M
-
-newtype Module = Module { mkModule :: [ByteString] }
-  deriving (Eq, Ord, Show)
-
-fromFilePath :: RawFilePath -> Module
-fromFilePath = Module . filter (/="/") . splitDirectories . dropExtension
-
-parentModule :: Module -> Module
-parentModule (Module a) = Module (init a)
-
-modName :: Char -> Bool
-modName c = isAlpha_ascii c || isDigit c || c == '_' || c == '-'
-
-includeCPP :: Parser Module
-includeCPP = string "#include" *> skipSpace *> (system <|> local)
-  where
-    system = char '<' *> modref <* char '>'
-    local  = char '"' *> modref <* char '"'
-
-    modref = Module <$> sepBy1' (takeWhile1 modName) (char '/')
-
-includeHaskell :: Parser Module
-includeHaskell = string "import" *> skipSpace *> mby (string "qualified") *> modref
-  where
-    mby = option () . void
-
-    modref = Module <$> sepBy1' (takeWhile1 modName) (char '.')
 
 -- TODO: Check file type
 includes :: (RawFilePath, [RawFilePath]) -> Includes

@@ -1,13 +1,10 @@
-check:
-	cabal build --ghc-options="-Wall -fno-code -fforce-recomp"
-
 build:
-	cabal build --ghc-options="-O2 -Wall"
+	@cabal build --ghc-options="-Wall"
 
 lint:
-	hlint .
+	@hlint progs src
 
 clean:
-	cabal clean
+	@cabal clean
 
 .PHONY: clean
