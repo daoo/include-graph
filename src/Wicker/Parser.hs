@@ -4,7 +4,7 @@ module Wicker.Parser where
 import Control.Applicative
 import Control.Monad
 import Data.Attoparsec.ByteString.Char8
-import Data.ByteString.Char8 (ByteString)
+import System.Posix.FilePath
 import Wicker.Module
 
 modName :: Char -> Bool
@@ -24,3 +24,6 @@ includeHaskell = string "import" *> skipSpace *> mby (string "qualified") *> mod
     mby = option () . void
 
     modref = Module <$> sepBy1' (takeWhile1 modName) (char '.')
+
+parseInclude :: RawFilePath -> Either String Module
+parseInclude = parseOnly (includeCPP <|> includeHaskell)
